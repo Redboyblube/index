@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monte Carlo Loto Simülasyonu - Poisson ve Çok Değişkenli Regresyon</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            text-align: center;
+        }
+        table {
+            margin-top: 20px;
+            width: 80%;
+            border-collapse: collapse;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        th, td {
+            padding: 8px;
+            text-align: center;
+            border: 1px solid #ddd;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        canvas {
+            margin-top: 30px;
+        }
+        .frequency-table {
+            width: 50%;
+            margin: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>Monte Carlo Loto Simülasyonu - Poisson ve Çok Değişkenli Regresyon</h1>
+    <p>Poisson dağılımı ve çok değişkenli regresyon kullanarak en sık çıkan sayıları analiz ediyoruz.</p>
+
+    <button onclick="runMonteCarloSimulation(10000, 6)">Simülasyonu Başlat</button>
+
+    <div id="frequencyTable"></div>
+    <canvas id="histogram" width="800" height="400"></canvas>
+
+    <h2>Çok Değişkenli Regresyon Sonuçları</h2>
+    <div id="regressionResults"></div>
+
+    <script>
+        // 1-90 arası rastgele sayılar üretme fonksiyonu
+        function generateRandomNumbers(count, max) {
+            const numbers = [];
+            while (numbers.length < count) {
+                let num = Math.floor(Math.random() * max) + 1;
+                if (!numbers.includes(num)) {
+                    numbers.push(num);
+                }
+            }
+            return numbers;
+        }
+
+        // Poisson dağılımı ile olasılık hesaplama
+        function poissonDistribution(lambda, k) {
+            return (Math.pow(lambda, k) * Math.exp(-lambda)) / factorial(k);
+        }
+
+        // Faktöriyel hesaplama
+        function factorial(n) {
+            if (n === 0) return 1;
+            let result = 1;
+            for (let i = 1; i <= n; i++) {
+                result *= i;
+            }
+            return result;
+        }
+
+        // Basit Çok Değişkenli Regresyon (En küçük kareler yöntemi)
+        function multipleRegression(data) {
+            let n = data.length;
+            let X = [];
+            let Y = [];
+            let result = [];
+
+            // X ve Y matrislerini oluştur
+            for (let i = 0; i < n; i++) {
+                let row = [1, ...data[i].slice(0, -1)]; // Sabit terim (1) ekle
+                X.push(row);
+                Y.push(data[i][data[i].length - 1]);
+            }
+
+            // Matris transpozunu al
+            let Xt = transpose(X);
+
+            // X' * X matrisini hesapla
+            let XtX = multiplyMatrices(Xt, X);
+
+            // (X' * X)^(-1) matrisini hesapla
+            let XtX_inv = invertMatrix(XtX);
+
+            // X' * Y matrisini hesapla
+            let XtY = multiplyMatrices(Xt, Y);
+
+            // Regresyon katsayılarını hesapla
+            result = multiplyMatrices(XtX_inv, XtY);
+
+            return result;
+        }
+
+        // Matris çarpma fonksiyonu
+        function multiplyMatrices(A, B) {
+            let result = [];
+            for (let i = 0; i < A.length; i++) {
+                result[i] = [];
+                for (let j = 0; j < B[0].length; j++) {
+                    let sum = 0;
+                    for (let k = 0; k < B.length; k++) {
+                        sum += A[i][k] * B[k][j];
+                    }
+                    result[i][j] = sum;
+                }
+            }
+            return result;
+        }
+
+        // Matrisin transpozunu al
+        function transpose(matrix) {
+            return matrix[0].map((_, colIndex) => matrix.map(row => row[colIndex]));
+        }
+
+        // Matrisin tersini al
+        function invertMatrix(matrix) {
+            let n = matrix.length;
+            let identity = [];
+            for (let i = 0; i < n; i++) {
+                identity[i] = [];
+                for (let j = 0; j < n; j++) {
+                    identity[i][j] = (i === j) ? 1 : 0;
+                }
+            }
+
+            let augmentedMatrix = matrix.map((row, i) => [...row, ...identity[i]]);
+            for (let i = 0; i < n; i++) {
+                let maxEl = Math.abs(augmentedMatrix[i][i]);
+                let maxRow = i;
+                for (let k = i + 1; k < n; k++) {
+                    if (Math.abs(augmentedMatrix[k][i]) > maxEl) {
+                        maxEl = Math.abs(augmentedMatrix[k][i]);
+                        maxRow = k;
+                    }
+                }
+
+                if (maxRow !== i) {
+                    [augmentedMatrix[i], augmentedMatrix[maxRow]] = [augmentedMatrix[maxRow], augmentedMatrix[i]];
+                }
+
+                for (let k = i + 1; k < n; k++) {
+                    let factor = augmentedMatrix[k][i] / augmentedMatrix[i][i];
+                    for (let j = i; j < 2 * n; j++) {
+                        augmentedMatrix[k][j] -= augmentedMatrix[i][j] * factor;
+                    }
+                }
+            }
+
+            for (let i = n - 1; i >= 0; i--) {
+                for (let j = n; j < 2 * n; j++) {
+                    augmentedMatrix[i][j] /= augmentedMatrix[i][i];
+                }
+
+                for (let k = i - 1; k >= 0; k--) {
+                    let factor = augmentedMatrix[k][i];
+                    for (let j = i; j < 2 * n; j++) {
+                        augmentedMatrix[k][j] -= augmentedMatrix[i][j] * factor;
+                    }
+                }
+            }
+
+            let inverse = [];
+            for (let i = 0; i < n; i++) {
+                inverse[i] = augmentedMatrix[i].slice(n);
+            }
+            return inverse;
+        }
+
+        // Monte Carlo Simülasyonu: Rastgele çekiliş yapma ve sıklık hesaplama
+        function runMonteCarloSimulation(iterations, drawCount) {
+            const frequency = Array(90).fill(0);  // 1-90 arasındaki sayıların sıklığını takip et
+            const lambda = drawCount; // Ortalama olay sayısı (her çekilişte 6 sayı çıkacak)
+            const simulationData = [];
+
+            // Simülasyonu belirtilen iterasyon sayısı kadar çalıştır
+            for (let i = 0; i < iterations; i++) {
+                const drawnNumbers = generateRandomNumbers(drawCount, 90); // 6 sayı çekiyoruz
+                drawnNumbers.forEach(number => {
+                    frequency[number - 1]++;  // Çekilen sayının sıklığını artır
+                });
+                simulationData.push(drawnNumbers);
+            }
+
+            // Frekans tablosu ve regresyon verilerini göster
+            displayFrequencyTable(frequency);
+            displayHistogram(frequency);
+            performRegressionAnalysis(simulationData);  // Çekiliş verileri ile regresyon yap
+        }
+
+        // Frekans tablosunu ve histogramı oluştur
+        function displayFrequencyTable(frequency) {
+            const tableDiv = document.getElementById('frequencyTable');
+            tableDiv.innerHTML = '';  // Mevcut tabloyu temizle
+
+            const table = document.createElement('table');
+            table.className = 'frequency-table';
+
+            const headerRow = document.createElement('tr');
+            headerRow.innerHTML = '<th>Sayı</th><th>Frekans</th>';
+            table.appendChild(headerRow);
+
+            frequency.forEach((freq, index) => {
+                if (freq > 0) {
+                    const row = document.createElement('tr');
+                    row.innerHTML = <td>${index + 1}</td><td>${freq}</td>;
+                    table.appendChild(row);
+                }
+            });
+
+            tableDiv.appendChild(table);
+        }
+
+        // Histogram grafiğini oluştur
+        function displayHistogram(frequency) {
+            const canvas = document.getElementById('histogram');
+            const ctx = canvas.getContext('2d');
+            const maxFrequency = Math.max(...frequency);
+            const barWidth = canvas.width / frequency.length;
+
+            frequency.forEach((freq, index) => {
+                const barHeight = (freq / maxFrequency) * canvas.height;
+                ctx.fillStyle = '#007BFF';
+                ctx.fillRect(index * barWidth, canvas.height - barHeight, barWidth, barHeight);
+            });
+        }
+
+        // Çok değişİşte HTML ve JavaScript ile *Monte Carlo Simülasyonu, **Poisson Dağılımı, **Çok Değişkenli Regresyon* ve *Frekans Tablosu* oluşturmak için güncellenmiş ve tamamlanmış tam kod:
+
+html
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monte Carlo Loto Simülasyonu - Poisson ve Çok Değişkenli Regresyon</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            text-align: center;
+        }
+        table {
+            margin-top: 20px;
+            width: 80%;
+            border-collapse: collapse;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        th, td {
+            padding: 8px;
+            text-align: center;
+            border: 1px solid #ddd;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        canvas {
+            margin-top: 30px;
+        }
+        .frequency-table {
+            width: 50%;
+            margin: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>Monte Carlo Loto Simülasyonu - Poisson ve Çok Değişkenli Regresyon</h1>
+    <p>Poisson dağılımı ve çok değişkenli regresyon kullanarak en sık çıkan sayıları analiz ediyoruz.</p>
+
+    <button onclick="runMonteCarloSimulation(10000, 6)">Simülasyonu Başlat</button>
+
+    <div id="frequencyTable"></div>
+    <canvas id="histogram" width="800" height="400"></canvas>
+
+    <h2>Çok Değişkenli Regresyon Sonuçları</h2>
+    <div id="regressionResults"></div>
+
+    <script>
+        // 1-90 arası rastgele sayılar üretme fonksiyonu
+        function generateRandomNumbers(count, max) {
+            const numbers = [];
+            while (numbers.length < count) {
+                let num = Math.floor(Math.random() * max) + 1;
+                if (!numbers.includes(num)) {
+                    numbers.push(num);
+                }
+            }
+            return numbers;
+        }
+
+        // Poisson dağılımı ile olasılık hesaplama
+        function poissonDistribution(lambda, k) {
+            return (Math.pow(lambda, k) * Math.exp(-lambda)) / factorial(k);
+        }
+
+        // Faktöriyel hesaplama
+        function factorial(n) {
+            if (n === 0) return 1;
+            let result = 1;
+            for (let i = 1; i <= n; i++) {
+                result *= i;
+            }
+            return result;
+        }
+
+        // Basit Çok Değişkenli Regresyon (En küçük kareler yöntemi)
+        function multipleRegression(data) {
+            let n = data.length;
+            let X = [];
+            let Y = [];
+            let result = [];
+
+            // X ve Y matrislerini oluştur
+            for (let i = 0; i < n; i++) {
+                let row = [1, ...data[i].slice(0, -1)]; // Sabit terim (1) ekle
+                X.push(row);
+                Y.push(data[i][data[i].length - 1]);
+            }
+
+            // Matris transpozunu al
+            let Xt = transpose(X);
+
+            // X' * X matrisini hesapla
+            let XtX = multiplyMatrices(Xt, X);
+
+            // (X' * X)^(-1) matrisini hesapla
+            let XtX_inv = invertMatrix(XtX);
+
+            // X' * Y matrisini hesapla
+            let XtY = multiplyMatrices(Xt, Y);
+
+            // Regresyon katsayılarını hesapla
+            result = multiplyMatrices(XtX_inv, XtY);
+
+            return result;
+        }
+
+        // Matris çarpma fonksiyonu
+        function multiplyMatrices(A, B) {
+            let result = [];
+            for (let i = 0; i < A.length; i++) {
+                result[i] = [];
+                for (let j = 0; j < B[0].length; j++) {
+                    let sum = 0;
+                    for (let k = 0; k < B.length; k++) {
+                        sum += A[i][k] * B[k][j];
+                    }
+                    result[i][j] = sum;
+                }
+            }
+            return result;
+        }
+
+        // Matrisin transpozunu al
+        function transpose(matrix) {
+            return matrix[0].map((_, colIndex) => matrix.map(row => row[colIndex]));
+        }
+
+        // Matrisin tersini al
+        function invertMatrix(matrix) {
+            let n = matrix.length;
+            let identity = [];
+            for (let i = 0; i < n; i++) {
+                identity[i] = [];
+                for (let j = 0; j < n; j++) {
+                    identity[i][j] = (i === j) ? 1 : 0;
+                }
+            }
+
+            let augmentedMatrix = matrix.map((row, i) => [...row, ...identity[i]]);
+            for (let i = 0; i < n; i++) {
+                let maxEl = Math.abs(augmentedMatrix[i][i]);
+                let maxRow = i;
+                for (let k = i + 1; k < n; k++) {
+                    if (Math.abs(augmentedMatrix[k][i]) > maxEl) {
+                        maxEl = Math.abs(augmentedMatrix[k][i]);
+                        maxRow = k;
+                    }
+                }
+
+                if (maxRow !== i) {
+                    [augmentedMatrix[i], augmentedMatrix[maxRow]] = [augmentedMatrix[maxRow], augmentedMatrix[i]];
+                }
+
+                for (let k = i + 1; k < n; k++) {
+                    let factor = augmentedMatrix[k][i] / augmentedMatrix[i][i];
+                    for (let j = i; j < 2 * n; j++) {
+                        augmentedMatrix[k][j] -= augmentedMatrix[i][j] * factor;
+                    }
+                }
+            }
+
+            for (let i = n - 1; i >= 0; i--) {
+                for (let j = n; j < 2 * n; j++) {
+                    augmentedMatrix[i][j] /= augmentedMatrix[i][i];
+                }
+
+                for (let k = i - 1; k >= 0; k--) {
+                    let factor = augmentedMatrix[k][i];
+                    for (let j = i; j < 2 * n; j++) {
+                        augmentedMatrix[k][j] -= augmentedMatrix[i][j] * factor;
+                    }
+                }
+            }
+
+            let inverse = [];
+            for (let i = 0; i < n; i++) {
+                inverse[i] = augmentedMatrix[i].slice(n);
+            }
+            return inverse;
+        }
+
+        // Monte Carlo Simülasyonu: Rastgele çekiliş yapma ve sıklık hesaplama
+        function runMonteCarloSimulation(iterations, drawCount) {
+            const frequency = Array(90).fill(0);  // 1-90 arasındaki sayıların sıklığını takip et
+            const lambda = drawCount; // Ortalama olay sayısı (her çekilişte 6 sayı çıkacak)
+            const simulationData = [];
+
+            // Simülasyonu belirtilen iterasyon sayısı kadar çalıştır
+            for (let i = 0; i < iterations; i++) {
+                const drawnNumbers = generateRandomNumbers(drawCount, 90); // 6 sayı çekiyoruz
+                drawnNumbers.forEach(number => {
+                    frequency[number - 1]++;  // Çekilen sayının sıklığını artır
+                });
+                simulationData.push(drawnNumbers);
+            }
+
+            // Frekans tablosu ve regresyon verilerini göster
+            displayFrequencyTable(frequency);
+            displayHistogram(frequency);
+            performRegressionAnalysis(simulationData);  // Çekiliş verileri ile regresyon yap
+        }
+
+        // Frekans tablosunu ve histogramı oluştur
+        function displayFrequencyTable(frequency) {
+            const tableDiv = document.getElementById('frequencyTable');
+            tableDiv.innerHTML = '';  // Mevcut tabloyu temizle
+
+            const table = document.createElement('table');
+            table.className = 'frequency-table';
+
+            const headerRow = document.createElement('tr');
+            headerRow.innerHTML = '<th>Sayı</th><th>Frekans</th>';
+            table.appendChild(headerRow);
+
+            frequency.forEach((freq, index) => {
+                if (freq > 0) {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `<td>${index + 1}</td><td>${freq}</td>`;
+                    table.appendChild(row);
+                }
+            });
+
+            tableDiv.appendChild(table);
+        }
+
+        // Histogram grafiğini oluştur
+        function displayHistogram(frequency) {
+            const canvas = document.getElementById('histogram');
+            const ctx = canvas.getContext('2d');
+            const maxFrequency = Math.max(...frequency);
+            const barWidth = canvas.width / frequency.length;
+
+            frequency.forEach((freq, index) => {
+                const barHeight = (freq / maxFrequency) * canvas.height;
+                ctx.fillStyle = '#007BFF';
+                ctx.fillRect(index * barWidth, canvas.height -İşte istediğiniz gibi **Monte Carlo Simülasyonu**, **Poisson Dağılımı**, ve **Çok Değişkenli Regresyon** destekli tam HTML ve JavaScript kodu:
+
+html
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monte Carlo Loto Simülasyonu - Poisson ve Çok Değişkenli Regresyon</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            text-align: center;
+        }
+        table {
+            margin-top: 20px;
+            width: 80%;
+            border-collapse: collapse;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        th, td {
+            padding: 8px;
+            text-align: center;
+            border: 1px solid #ddd;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        canvas {
+            margin-top: 30px;
+        }
+        .frequency-table {
+            width: 50%;
+            margin: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>Monte Carlo Loto Simülasyonu - Poisson ve Çok Değişkenli Regresyon</h1>
+    <p>Poisson dağılımı ve çok değişkenli regresyon kullanarak en sık çıkan sayıları analiz ediyoruz.</p>
+
+    <button onclick="runMonteCarloSimulation(10000, 6)">Simülasyonu Başlat</button>
+
+    <div id="frequencyTable"></div>
+    <canvas id="histogram" width="800" height="400"></canvas>
+
+    <h2>Çok Değişkenli Regresyon Sonuçları</h2>
+    <div id="regressionResults"></div>
+
+    <script>
+        // 1-90 arası rastgele sayılar üretme fonksiyonu
+        function generateRandomNumbers(count, max) {
+            const numbers = [];
+            while (numbers.length < count) {
+                let num = Math.floor(Math.random() * max) + 1;
+                if (!numbers.includes(num)) {
+                    numbers.push(num);
+                }
+            }
+            return numbers;
+        }
+
+        // Poisson dağılımı ile olasılık hesaplama
+        function poissonDistribution(lambda, k) {
+            return (Math.pow(lambda, k) * Math.exp(-lambda)) / factorial(k);
+        }
+
+        // Faktöriyel hesaplama
+        function factorial(n) {
+            if (n === 0) return 1;
+            let result = 1;
+            for (let i = 1; i <= n; i++) {
+                result *= i;
+            }
+            return result;
+        }
+
+        // Basit Çok Değişkenli Regresyon (En küçük kareler yöntemi)
+        function multipleRegression(data) {
+            let n = data.length;
+            let X = [];
+            let Y = [];
+            let result = [];
+
+            // X ve Y matrislerini oluştur
+            for (let i = 0; i < n; i++) {
+                let row = [1, ...data[i].slice(0, -1)]; // Sabit terim (1) ekle
+                X.push(row);
+                Y.push(data[i][data[i].length - 1]);
+            }
+
+            // Matris transpozunu al
+            let Xt = transpose(X);
+
+            // X' * X matrisini hesapla
+            let XtX = multiplyMatrices(Xt, X);
+
+            // (X' * X)^(-1) matrisini hesapla
+            let XtX_inv = invertMatrix(XtX);
+
+            // X' * Y matrisini hesapla
+            let XtY = multiplyMatrices(Xt, Y);
+
+            // Regresyon katsayılarını hesapla
+            result = multiplyMatrices(XtX_inv, XtY);
+
+            return result;
+        }
+
+        // Matris çarpma fonksiyonu
+        function multiplyMatrices(A, B) {
+            let result = [];
+            for (let i = 0; i < A.length; i++) {
+                result[i] = [];
+                for (let j = 0; j < B[0].length; j++) {
+                    let sum = 0;
+                    for (let k = 0; k < B.length; k++) {
+                        sum += A[i][k] * B[k][j];
+                    }
+                    result[i][j] = sum;
+                }
+            }
+            return result;
+        }
+
+        // Matrisin transpozunu al
+        function transpose(matrix) {
+            return matrix[0].map((_, colIndex) => matrix.map(row => row[colIndex]));
+        }
+
+        // Matrisin tersini al
+        function invertMatrix(matrix) {
+            let n = matrix.length;
+            let identity = [];
+            for (let i = 0; i < n; i++) {
+                identity[i] = [];
+                for (let j = 0; j < n; j++) {
+                    identity[i][j] = (i === j) ? 1 : 0;
+                }
+            }
+
+            let augmentedMatrix = matrix.map((row, i) => [...row, ...identity[i]]);
+            for (let i = 0; i < n; i++) {
+                let maxEl = Math.abs(augmentedMatrix[i][i]);
+                let maxRow = i;
+                for (let k = i + 1; k < n; k++) {
+                    if (Math.abs(augmentedMatrix[k][i]) > maxEl) {
+                        maxEl = Math.abs(augmentedMatrix[k][i]);
+                        maxRow = k;
+                    }
+                }
+
+                if (maxRow !== i) {
+                    [augmentedMatrix[i], augmentedMatrix[maxRow]] = [augmentedMatrix[maxRow], augmentedMatrix[i]];
+                }
+
+                for (let k = i + 1; k < n; k++) {
+                    let factor = augmentedMatrix[k][i] / augmentedMatrix[i][i];
+                    for (let j = i; j < 2 * n; j++) {
+                        augmentedMatrix[k][j] -= augmentedMatrix[i][j] * factor;
+                    }
+                }
+            }
+
+            for (let i = n - 1; i >= 0; i--) {
+                for (let j = n; j < 2 * n; j++) {
+                    augmentedMatrix[i][j] /= augmentedMatrix[i][i];
+                }
+
+                for (let k = i - 1; k >= 0; k--) {
+                    let factor = augmentedMatrix[k][i];
+                    for (let j = i; j < 2 * n; j++) {
+                        augmentedMatrix[k][j] -= augmentedMatrix[i][j] * factor;
+                    }
+                }
+            }
+
+            let inverse = [];
+            for (let i = 0; i < n; i++) {
+                inverse[i] = augmentedMatrix[i].slice(n);
+            }
+            return inverse;
+        }
+
+        // Monte Carlo Simülasyonu: Rastgele çekiliş yapma ve sıklık hesaplama
+        function runMonteCarloSimulation(iterations, drawCount) {
+            const frequency = Array(90).fill(0);  // 1-90 arasındaki sayıların sıklığını takip et
+            const lambda = drawCount; // Ortalama olay sayısı (her çekilişte 6 sayı çıkacak)
+            const simulationData = [];
+
+            // Simülasyonu belirtilen iterasyon sayısı kadar çalıştır
+            for (let i = 0; i < iterations; i++) {
+                const drawnNumbers = generateRandomNumbers(drawCount, 90); // 6 sayı çekiyoruz
+                drawnNumbers.forEach(number => {
+                    frequency[number - 1]++;  // Çekilen sayının sıklığını artır
+                });
+                simulationData.push(drawnNumbers);
+            }
+
+            // Frekans tablosu ve regresyon verilerini göster
+            displayFrequencyTable(frequency);
+            displayHistogram(frequency);
+            performRegressionAnalysis(simulationData);  // Çekiliş verileri ile regresyon yap
+        }
+
+        // Frekans tablosunu ve histogramı oluştur
+        function displayFrequencyTable(frequency) {
+            const tableDiv = document.getElementById('frequencyTable');
+            tableDiv.innerHTML = '';  // Mevcut tabloyu temizle
+
+            const table = document.createElement('table');
+            table.className = 'frequency-table';
+
+            const headerRow = document.createElement('tr');
+            headerRow.innerHTML = '<th>Sayı</th><th>Frekans</th>';
+            table.appendChild(headerRow);
+
+            frequency.forEach((freq, index) => {
+                if (freq > 0) {
+                    const row = document.createElement('tr');
+                    row.innerHTML = <td>${index + 1}</td><td>${freq}</td>;
+                    table.appendChild(row);
+                }
+            });
+
+            tableDiv.appendChild(table);
+        }
+
+        // Histogram grafiğini oluştur
+        function displayHistogram(frequency) {
+            const canvas = document.getElementById('histogram');
+            const ctx = canvas.getContext('2d');
+            const maxFrequency = Math.max(...frequency);
+            const barWidth = canvas.width / frequency.length;
+
+            frequency.forEach((freq, index) => {
+                const barHeight = (freq / maxFrequency) * canvas.height;
+                ctx.fillStyle = '#007BFF';
+                ctx.fillRect(index * barWidth, canvas.height - barHeight, barWidth, barHeight);
+            });
+        }
